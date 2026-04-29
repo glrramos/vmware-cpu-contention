@@ -24,6 +24,10 @@
 .PARAMETER VRopsServer
     FQDN ou IP do vROps.
 
+.PARAMETER VCenterCredential
+    PSCredential para vCenter. Se omitido, prompt interativo. Use formato
+    UPN (administrator@vsphere.local) ou DOMAIN\user.
+
 .PARAMETER VRopsCredential
     PSCredential para vROps. Se omitido, prompt interativo.
 
@@ -52,6 +56,7 @@
 param(
     [Parameter(Mandatory)][string]$VCenter,
     [Parameter(Mandatory)][string]$VRopsServer,
+    [pscredential]$VCenterCredential,
     [pscredential]$VRopsCredential,
     [string]$VRopsAuthSource = 'LOCAL',
     [string[]]$VMNames,
@@ -320,7 +325,21 @@ if (-not (Get-Module -ListAvailable -Name VMware.PowerCLI)) {
 }
 Import-Module VMware.PowerCLI -ErrorAction Stop | Out-Null
 Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -ParticipateInCEIP $false -Scope Session -Confirm:$false | Out-Null
-$vc = Connect-VIServer -Server $VCenter -ErrorAction Stop
+
+if (-not $VCenterCredential) {
+    $VCenterCredential = Get-Credential -Message "Credenciais vCenter ($VCenter) - use UPN administrator@vsphere.local ou DOMAIN\user"
+    if (-not $VCenterCredential) {
+        Write-Error "Credenciais vCenter nao informadas."
+        exit 1
+    }
+}
+try {
+    $vc = Connect-VIServer -Server $VCenter -Credential $VCenterCredential -ErrorAction Stop
+} catch {
+    Write-Error "Falha autenticando no vCenter '$VCenter': $($_.Exception.Message)"
+    Write-Warning "Cheque: (1) usuario no formato UPN (user@vsphere.local) ou DOMAIN\user; (2) permissao de leitura no vSphere; (3) senha sem caracteres que o terminal possa estar comendo."
+    exit 1
+}
 Write-Host "  Conectado: $($vc.Name)  versao $($vc.Version) build $($vc.Build)" -ForegroundColor Green
 
 if (-not $VRopsCredential) {

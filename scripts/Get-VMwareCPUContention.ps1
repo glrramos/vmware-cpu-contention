@@ -23,6 +23,11 @@
 .PARAMETER VCenter
     FQDN ou IP do vCenter Server. Obrigatorio exceto quando -ListVRopsAuthSources.
 
+.PARAMETER VCenterCredential
+    PSCredential para vCenter. Se omitido, prompt interativo. Use formato
+    UPN (administrator@vsphere.local) ou DOMAIN\user. Evita o sub-prompt
+    bugado do PowerCLI quando nao ha SSO passthrough.
+
 .PARAMETER Hours
     Janela de coleta em horas. Default 1. Define automaticamente o rollup do
     vCenter: <=1h real-time (20s), <=24h past-day (5min), <=168h past-week (30min),
@@ -176,6 +181,8 @@
 param(
     [Parameter(Mandatory = $false)]
     [string]$VCenter,
+
+    [pscredential]$VCenterCredential,
 
     [int]$Hours = 1,
 
@@ -911,10 +918,18 @@ Set-CertificatePolicy
 
 Write-Host ""
 Write-Host "Conectando em vCenter $VCenter ..." -ForegroundColor Cyan
+if (-not $VCenterCredential) {
+    $VCenterCredential = Get-Credential -Message "Credenciais vCenter ($VCenter) - use UPN administrator@vsphere.local ou DOMAIN\user"
+    if (-not $VCenterCredential) {
+        Write-Error "Credenciais vCenter nao informadas."
+        exit 1
+    }
+}
 try {
-    $vcConnection = Connect-VIServer -Server $VCenter -ErrorAction Stop
+    $vcConnection = Connect-VIServer -Server $VCenter -Credential $VCenterCredential -ErrorAction Stop
 } catch {
     Write-Error "Falha conectando ao vCenter '$VCenter': $($_.Exception.Message)"
+    Write-Warning "Cheque: (1) usuario UPN (user@vsphere.local) ou DOMAIN\user; (2) permissao de leitura no vSphere; (3) senha sem caracteres que o terminal possa estar comendo."
     exit 1
 }
 $vCenterVersion = "$($vcConnection.Version) build $($vcConnection.Build)"
